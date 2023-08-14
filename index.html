@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Word Search</title>
+<style>
+body {
+	text-align : center;
+	cursor : default;
+}
+input[type="radio"] {
+	margin-left : 5px;
+}
+h1 {
+	margin-top : 0px;
+	display : table;
+	cursor : pointer;
+}
+.center {
+	margin-left : auto;
+	margin-right : auto;
+}
+.inputBox {
+	width : 25px;
+}
+.indent1 {
+	margin-left : 5px;
+}
+.indent2 {
+	margin-left : 23px;
+}
+.sidebar {
+	position : absolute;
+	width : 250px;
+	text-align : left;
+	padding : 10px;
+}
+.sq {
+	height : 35px;
+	width : 35px;
+	display : inline-block;
+	line-height : 35px;
+}
+.sq:hover {
+	background-color : #b59f3b; /*#b54b00;*/
+}
+#menuIcon {
+	position : absolute;
+	left : 8px;
+	cursor : pointer;
+}
+#options {
+	border : 2px solid gray;
+	border-radius : 25px;
+	margin-top : 10px;
+	left : 15px;
+	height : 80%;
+	opacity : 0.9;
+	z-index : 2;
+	/* background-color : #222222; */
+	backdrop-filter : blur(10px);
+}
+#wordList {
+	right : 20px;
+	column-count : 2;
+	column-gap : 30px;
+	padding-top : 40px;
+}
+#timerCtrl {
+	margin-left : 5px;
+	margin-right : 20px;
+}
+#fieldContainer {
+	position : relative;
+	display : inline-block;
+}
+#puzzle {
+	border : 2px solid gray;
+	position : absolute;
+	font : 20px Georgia;
+	z-index : 1;
+}
+#cvs {
+	position : relative;
+	z-index : 0;
+}
+#congrats {
+	margin-top : 20px;
+	column-span : all;
+}
+</style>
+
+<script type="text/javascript">
+var ctx, W, H, numWords, boxW = 35, boxH = 35, timer = 0, counter;
+var alphabet = "etaoinsrhdlucmfywgpbvkxqjz".toUpperCase().split("");
+//~ var freq0 = "12.02,9.10,8.12,7.68,7.31,6.95,6.28,6.02,5.92,4.32,3.98,2.88,2.71,2.61,2.30,2.11,2.09,2.03,1.82,1.49,1.11,0.69,0.17,0.11,0.10,0.07".split(",");
+var freqBase = 6, freqMult = 1, freq = [];
+for (var i=0;i<alphabet.length;i++) {
+	for (var j=0;j<freqBase+freqMult*(alphabet.length-1-i);j++) {
+		freq.push(alphabet[i]);
+	};
+};
+var presets = [[10,10,10,4,8],[15,15,20,5,9],[20,20,30,6,10],[18,36,60,6,12]], inputIDs = ["heightBox","widthBox","numBox","minL","maxL"];
+var dirMap = {"r":[1,0],"u":[0,-1],"d":[0,1],"ru":[1,-1],"rd":[1,1],"l":[-1,0],"lu":[-1,-1],"ld":[-1,1]};
+var allDirs = Object.keys(dirMap), numDirs, maxLength, minLength, placeAttempts;
+var puzzle, words, solSqs, sols = [], startSq = [], gameover = false;
+function get(id) { return document.getElementById(id); }
+function s_h(id) {
+	get(id).style.display = (get(id).style.display == "none")?"":"none";
+}
+function randomLetter() {
+	//~ return alphabet[Math.floor(alphabet.length*Math.random())]; // uniform frequency
+	return freq[Math.floor(freq.length*Math.random())];
+}
+function randomWord(lb, ub) {
+	do { var w = allWords[Math.floor(allWords.length*Math.random())]; }
+	while (w.length < lb || w.length > ub);
+	return w.toUpperCase();
+}
+function placeWord(word) {
+	var lettersPlaced = 0, attempts = 0, l = word.length, currX, currY, currSq, rollback = [];
+	if (l < 2 || words.some(w => 1+w.search(word) || 1+word.search(w))) return;
+	while (lettersPlaced < l && attempts < placeAttempts) {
+		attempts++;
+		var dir = dirMap[allDirs[Math.floor(numDirs*Math.random())]];
+		var startX = Math.floor(W*Math.random());
+		var startY = Math.floor(H*Math.random());
+		var endX = startX + (l-1)*dir[0];
+		var endY = startY + (l-1)*dir[1];
+		if (endX >= 0 && endX < W && endY >= 0 && endY < H) {
+			for (var i=0;i<l;i++) {
+				currX = startX + i*dir[0];
+				currY = startY + i*dir[1];
+				currSq = puzzle[currY][currX];
+				if (currSq != undefined && currSq != word[i]) {
+					for (var j=i-1;j>=0;j--) puzzle[startY+j*dir[1]][startX+j*dir[0]] = rollback.pop();
+					lettersPlaced = 0;
+					break;
+				};
+				rollback.push(currSq);
+				puzzle[currY][currX] = word[i];
+				lettersPlaced++;
+			};
+		};
+	};
+	if (lettersPlaced == l) { 
+		words.push(word);
+		solSqs.push([startX, startY]);
+	};
+}
+function drawNew() {
+	if (!gameover && sols.length > 0) {
+		if (prompt("A game has already started. Do you want to quit the current game?") === null) return;
+	};
+	gameover = false;
+	get("timerCtrl").disabled = false;
+	clearTimeout(timer);
+	timer = 0;
+	get("fieldContainer").style.display = "";
+	get("clock").innerHTML = "000";
+	minLength = +get("minL").value, maxLength = +get("maxL").value;
+	W = +get("widthBox").value, H = +get("heightBox").value;
+	resize();
+	numWords = +get("numBox").value;
+	numDirs = get("doBackwards").checked ? allDirs.length : 5;
+	placeAttempts = 2*numDirs*W*H;
+	get("puzzle").style.width = boxW*W + "px";
+	get("puzzle").style.height = boxH*H + "px";
+	get("cvs").width = boxW*W;
+	get("cvs").height = boxH*H;
+	ctx.strokeStyle = "green";
+	ctx.lineWidth = Math.floor(3*boxW/4) + 1;
+	ctx.lineCap = "round";
+	puzzle = [], words = [], solSqs = [], sols = [];
+	for (var j=0;j<H;j++) { puzzle[j] = new Array(W); };
+	var customList = get("customWords").value;
+	if (customList != "") {
+		customList = customList.replace(/\n/g, ",").replace(/[^a-zA-Z,]/g, "").toUpperCase().split(",");
+		for (var i=0;i<customList.length;i++) placeWord(customList[i]);
+	} else {
+		if (numWords <= 0) { alert("Expected >0 words!"); return; };
+		counter = 0;
+		while (words.length < numWords && counter < placeAttempts/16) {
+			counter++;
+			placeWord(randomWord(minLength, maxLength));
+		};
+	};
+	var wordListHTML = "", puzzleHTML = "";
+	for (var i=0;i<words.length;i++) wordListHTML += "<div><span id='word" + i + "'>" + words[i] + "</span></div>";
+	for (var j=0;j<H;j++) {
+		puzzleHTML += "<div>";
+		for (var i=0;i<W;i++) {
+			if (puzzle[j][i] == undefined) puzzle[j][i] = randomLetter();
+			puzzleHTML += "<span id='" + i + "," + j + "' class='sq' onmousedown='selectSq(this.id,\"d\")' onmouseup='selectSq(this.id,\"u\")'>" + puzzle[j][i] + "</span>";
+		};
+		puzzleHTML += "</div>";
+	};
+	get("wordList").innerHTML = wordListHTML;
+	get("puzzle").innerHTML = puzzleHTML;
+	get("wordCount").innerHTML = words.length;
+	setTimeout(ctrlTimer, 1000);
+}
+function selectSq(sq, key) {
+	if (gameover || (key == "d" && startSq.length > 0) || (key == "u" && startSq.join(",") == sq)) return;
+	var currSq = sq.split(",");
+	currSq = [+currSq[0], +currSq[1]];
+	if (startSq.length == 0) {
+		startSq = currSq;
+		color("2px solid orange", 0, startSq.join(","));
+		return;
+	};
+	var oldSq, deltaX, deltaY, stepX, stepY, cand = "", pos;
+	oldSq = startSq;
+	startSq = [];
+	color("", 0, oldSq.join(","));
+	deltaX = Math.abs(currSq[0] - oldSq[0]);
+	deltaY = Math.abs(currSq[1] - oldSq[1]);
+	stepX = (deltaX == 0) ? 0 : ((currSq[0] > oldSq[0]) ? 1 : -1);
+	stepY = (deltaY == 0) ? 0 : ((currSq[1] > oldSq[1]) ? 1 : -1);
+	if (deltaX > 0 && deltaY > 0 && deltaX != deltaY) return;
+	if ((oldSq[0] + deltaX*stepX < 0) || (oldSq[0] + deltaX*stepX >= W) || (oldSq[1] + deltaY*stepY < 0) || (oldSq[1] + deltaY*stepY >= H)) return;
+	for (var i=0;i<=Math.max(deltaX, deltaY);i++) {
+		cand += puzzle[oldSq[1] + stepY*i][oldSq[0] + stepX*i];
+	};
+	pos = words.indexOf(cand);
+	if (pos < 0) pos = words.indexOf(cand.split("").reverse().join(""));
+	if (pos >= 0) {
+		if (sols.indexOf(words[pos]) >= 0) return;
+		sols.push(words[pos]);
+		// for (var i=0;i<=Math.max(deltaX, deltaY);i++) { // Non-canvas method of filling
+			// color("green", 1, (oldSq[0]+stepX*i) + "," + (oldSq[1]+stepY*i));
+		// };
+		ctx.beginPath();
+		ctx.moveTo(boxW*(oldSq[0]+0.5)+2, boxH*(oldSq[1]+0.5)+1);
+		ctx.lineTo(boxW*(currSq[0]+0.5)+2, boxH*(currSq[1]+0.5)+1);
+		ctx.stroke();
+		get("wordCount").innerHTML = words.length - sols.length;
+		get("word" + pos).style.textDecoration = "line-through";
+		color("green", 1, "word" + pos);
+		if (words.length == sols.length) gameOver();
+	};
+}
+function color(color, fill, id) {
+	get(id).style[fill ? "backgroundColor" : "outline"] = color;
+}
+function gameOver() {
+	get("wordList").innerHTML += "<div id='congrats'>Congratulations - you win!</div>";
+	ctrlTimer();
+	get("timerCtrl").value = "Reset";
+	gameover = true;
+}
+function selectSize(n) {
+	for (var i=0;i<inputIDs.length;i++) get(inputIDs[i]).value = presets[n][i];
+}
+function resetOptions() {
+	selectSize(1);
+	get("doBackwards").checked = true;
+	get("medium").checked = true;
+}
+function loader() {
+	s_h("options");
+	ctx = get("cvs").getContext("2d");
+	window.onresize = resize;
+	drawNew();
+}
+function resize() {
+	if (window.innerWidth - 520 < boxW*W) {
+		get("fieldContainer").style.marginRight = "250px";
+		get("wordList").style.left = boxW*W + Math.max(innerWidth - boxW*W - 250, 0)/2 + 20 + "px";
+	} else {
+		get("fieldContainer").style.marginRight = "initial";
+		get("wordList").style.left = "initial";
+	};
+}
+function ctrlTimer() {
+	if (gameover) { 
+		drawNew();
+		s_h("fieldContainer");
+	} else if (timer) {
+		clearInterval(timer);
+		timer = 0;
+		get("timerCtrl").value = "Resume";
+	} else {
+		get("timerCtrl").value = "Pause";
+		timer = setInterval(markTime, 1000);
+	};
+}
+function markTime() {
+	var currentTime = +get("clock").innerHTML;
+	get("clock").innerHTML = ((currentTime<99)?(currentTime<9)?"00":"0":"") + (currentTime + 1);
+}
+function getRelatedWords() {
+	get("relatedWordsLink").href = "https://relatedwords.io/" + encodeURIComponent(get("customWords").value);
+}
+function cheat() {
+	for (var i=0;i<words.length;i++) {
+		if (!sols.some(w => w == words[i])) {
+			color("2px solid orange", 0, solSqs[i].join(","));
+			return;
+		};
+	};
+}
+
+var allWords = "ability,able,aboriginal,about,above,abroad,absence,absent,absolute,absorption,abstract,academic,academy,accent,accept,acceptable,acceptance,accessibility,accessible,accessory,accident,accommodate,accommodation,accompany,accomplish,accordance,account,accountability,accreditation,accuracy,accurate,accuse,achieve,achievement,acid,acknowledge,acne,acoustic,acquire,acquisition,acre,acrobat,acrylic,action,activate,activation,active,activist,activity,actor,actual,actually,acute,adaptation,adapt,adapter,adaptive,addiction,addition,additional,adequate,adjacent,adjust,adjustable,adjustment,admin,administration,administrative,administrator,admission,admit,adobe,adolescent,adopt,adoption,adult,advance,advancement,advantage,adventure,adverse,advertise,advertisement,advertiser,advice,advisor,advisory,advocacy,advocate,aerial,aerospace,affair,affect,affiliate,affiliation,afford,affordable,afraid,after,afternoon,again,against,agency,agenda,agent,aggregate,aggressive,agree,agreement,agricultural,agriculture,ahead,aircraft,airfare,airline,airplane,airport,alarm,album,alcohol,alert,algebra,algorithm,alien,align,alignment,alike,alive,allege,allergy,alliance,allocate,allocation,allow,allowance,alloy,ally,almost,alone,along,alpha,alphabetical,alpine,already,also,alter,alternate,alternative,although,alto,aluminum,alumni,amateur,ambassador,amber,ambient,amend,amendment,amino,among,amount,amplifier,analog,analyst,analytical,analyze,anatomy,anchor,ancient,angel,anger,angle,angry,animal,animation,anime,annex,anniversary,annotate,annotation,announce,announcement,annual,another,answer,antenna,anthropology,antibody,antique,anxiety,anybody,anymore,anyone,anytime,anyway,anywhere,apart,apartment,apparel,apparent,appeal,appear,appearance,appendix,apple,appliance,applicable,applicant,application,apply,appoint,appointment,appraisal,appreciate,appreciation,approach,appropriate,appropriation,approval,approve,approximate,april,aqua,aquarium,aquatic,arabic,arbitrary,arbitration,arcade,arch,architect,architectural,architecture,archive,arctic,area,arena,argue,argument,arise,arithmetic,armor,army,around,arrange,arrangement,array,arrest,arrival,arrive,arrow,article,artificial,artist,artistic,artwork,ascii,aside,aspect,assemble,assembly,assessment,asset,assign,assignment,assist,assistance,assistant,associate,association,assume,assumption,assurance,assure,asthma,astrology,astronomy,athlete,athletic,atlantic,atmosphere,atmospheric,atom,atomic,attach,attachment,attack,attempt,attend,attendance,attention,attitude,attorney,attract,attraction,attractive,attribute,auction,audience,audio,audit,auditor,authentic,authentication,author,authority,authorization,authorize,automatic,automation,automobile,automotive,autumn,availability,available,avatar,avenue,average,aviation,avoid,award,aware,away,awesome,awful,baby,bachelor,back,background,backup,bacon,bacteria,badge,baker,balance,bald,ball,ballet,balloon,ballot,banana,band,bandwidth,bang,bank,bankruptcy,banner,bare,bargain,barn,barrel,barrier,base,baseball,baseline,basement,basic,basin,basket,basketball,batch,bath,bathroom,battery,battle,battlefield,beach,beam,bean,bear,beast,beat,beautiful,beauty,beaver,became,because,become,bedroom,beef,been,beer,before,began,begin,beginner,behalf,behavior,behind,belief,believe,bell,belle,belly,belong,below,belt,bench,benchmark,bend,beneath,beneficial,benefit,berry,beside,best,beta,better,between,beverage,beyond,bible,biblical,bibliography,bicycle,bidder,bike,bill,billion,binary,bind,biodiversity,biography,biological,biology,biotechnology,bird,birth,birthday,bishop,bite,bizarre,black,blackjack,blade,blame,blank,blanket,blast,blend,blind,blink,block,blog,blogger,blond,blood,bloom,blow,blue,board,boat,body,bold,bolt,bomb,bond,bone,book,bookmark,bookstore,boolean,boom,boost,boot,booth,border,born,borough,both,bother,bottle,bottom,bought,boulder,boulevard,bound,boundary,bouquet,boutique,bowl,bracelet,bracket,brain,brake,branch,brand,brave,breach,bread,break,breakdown,breakfast,breath,brick,bridal,bride,bridge,brief,bright,brilliant,broad,broadband,broadcast,brochure,broke,broker,bronze,brook,brother,brought,brown,browse,browser,brunette,brush,brutal,bubble,buck,buddy,budget,buffalo,buffer,build,builder,built,bulk,bull,bullet,bulletin,bumper,bunch,bundle,bunny,burden,bureau,burn,burner,burst,bush,busy,butler,butter,butterfly,button,buyer,buzz,byte,cabin,cabinet,cable,cache,cafe,cage,cake,calcium,calculate,calculation,calculator,calculus,calendar,calibration,call,calm,camcorder,camel,camera,camp,campaign,canal,cancel,cancellation,candidate,candle,candy,cannon,canon,canyon,capability,capable,capacity,cape,capital,captain,capture,carbon,card,cardiac,cardiovascular,care,career,careful,cargo,caribbean,carnival,carpet,carrier,carry,cart,cartoon,cartridge,case,cash,casino,cassette,cast,castle,casual,catalogue,catalyst,catch,category,cathedral,catholic,cattle,caught,cause,caution,cave,cedar,celebrate,celebration,celebrity,cell,cellular,cement,cemetery,cent,center,central,century,ceramic,ceremony,certain,certificate,certification,chain,chair,chairman,challenge,chamber,champagne,champion,championship,chance,chancellor,change,changelog,channel,chapel,chapter,char,character,characteristic,characterization,charge,charger,charitable,charity,charm,chart,charter,chase,chat,cheap,cheat,check,checklist,checkout,cheese,chef,chemical,chemistry,cherry,chest,chick,chicken,chief,child,childhood,children,chip,chocolate,choice,choir,cholesterol,choose,chose,chosen,chrome,chronic,chronicle,chubby,church,cigarette,cinema,circle,circuit,circular,circulation,citation,cite,citizen,citizenship,city,civic,civil,civilian,civilization,claim,clan,clarity,classic,classical,classification,classroom,clause,clay,clean,cleaner,cleanup,clear,clearance,clerk,click,client,cliff,climate,climb,clinic,clinical,clip,clock,clone,close,closure,cloth,cloud,cloudy,club,cluster,coach,coal,coalition,coast,coat,code,coffee,cognitive,coin,cold,collaboration,collaborative,collapse,collar,colleague,collect,collectible,collection,collective,collector,college,cologne,colon,colonial,colony,color,column,combat,combination,combine,combo,comedy,comfort,comfortable,comic,command,commander,comment,commentary,commerce,commercial,commission,commissioner,commit,commitment,committee,commodity,common,commonwealth,communicate,communication,communist,community,compact,companion,company,comparable,comparative,compare,comparison,compatibility,compatible,compensation,compete,competent,competition,competitive,compilation,compile,compiler,complaint,complement,complete,completion,complex,complexity,compliance,compliant,complimentary,comply,component,composer,composite,composition,compound,comprehensive,compression,compromise,computation,compute,computer,concentrate,concentration,concept,conceptual,concern,concert,conclude,conclusion,concrete,condition,conditional,condo,conduct,conference,confidence,confident,confidential,confidentiality,configuration,configure,confirm,confirmation,conflict,confusion,congressional,conjecture,conjunction,connect,connection,connectivity,connector,consecutive,consent,consequence,consequently,conservation,conservative,consider,considerable,consideration,consist,consistency,consistent,console,consolidation,consortium,conspiracy,constant,constitute,constitution,constraint,construct,construction,consult,consultancy,consultant,consultation,consumer,consumption,contact,contain,container,contamination,contemporary,content,contest,context,continent,continental,continual,continue,continuity,continuous,contract,contractor,contrary,contrast,contribute,contribution,contributor,control,controller,controversial,controversy,convenience,convenient,convention,conventional,convergence,conversation,conversion,convert,converter,convertible,conviction,cook,cookbook,cookie,cool,cooperation,cooperative,coordinate,coordination,coordinator,cope,copper,copy,copyright,coral,cord,core,cork,corn,corporate,corporation,correct,correction,correlation,correspondence,corruption,cosmetic,cost,costume,cottage,cotton,could,council,counsel,count,counter,country,county,couple,coupon,courage,courier,course,court,courtesy,cove,cover,coverage,cowboy,crack,cradle,craft,crash,crazy,cream,create,creation,creative,creativity,creator,creature,credit,creek,crest,crew,cricket,crime,criminal,criteria,criterion,critical,criticism,crop,crossword,crowd,crown,crucial,crude,cruise,crystal,cuba,cube,cubic,cuisine,cult,cultural,culture,cumulative,cure,currency,current,curriculum,cursor,curve,custody,custom,customer,customize,cute,cyber,cycle,cylinder,daily,dairy,damage,dame,dance,danger,dare,dark,dash,data,database,date,daughter,dawn,dead,deadline,deadly,deaf,deal,dealer,dealt,dean,dear,death,debate,debt,debug,debut,decade,december,decent,decide,decimal,decision,deck,declaration,declare,decline,decor,decorative,decrease,deep,deer,default,defeat,defend,defendant,defense,defensive,deficit,define,definite,definition,degree,delay,delegation,delete,delight,deliver,delivery,deluxe,demand,demo,democracy,democratic,demographic,demonstrate,demonstration,denial,dense,density,dental,deny,department,departure,depend,dependence,dependent,deployment,deposit,depot,depression,depth,deputy,derby,describe,description,desert,deserve,design,designation,designer,desirable,desire,desk,desktop,desperate,despite,destination,destiny,destroy,destruction,detail,detect,detection,detective,detector,determination,determine,develop,developer,development,developmental,deviant,deviation,device,diagnostic,diagram,dial,dialog,diameter,diamond,diary,dice,dictionary,diesel,diet,dietary,differ,difference,different,differential,difficult,difficulty,digest,digit,digital,dimension,dinner,diploma,direct,direction,directive,director,directory,dirt,dirty,disability,disable,disagree,disaster,discharge,disciplinary,discipline,disclaimer,disclose,disclosure,disco,discount,discover,discovery,discrete,discretion,discrimination,discussion,dish,disk,disorder,dispatch,display,disposal,disposition,dispute,distance,distant,distinct,distinction,distribute,distribution,distributor,district,dive,diverse,diversity,divide,dividend,divine,division,divorce,dock,doctor,doctrine,document,documentary,documentation,dodge,doll,dollar,domain,dome,domestic,dominant,donate,donation,done,donor,doom,door,dosage,dose,double,doubt,down,download,downtown,dozen,draft,drag,dragon,drain,drainage,drama,dramatic,draw,drawn,dream,drew,drill,drink,drive,driver,drop,drove,drug,drum,drunk,dryer,dual,duck,dude,duke,dumb,dump,duplicate,durable,duration,dust,duty,dynamic,each,eagle,earl,earliest,early,earn,earth,earthquake,ease,easier,easily,east,easter,eastern,easy,ebony,echo,eclipse,ecological,ecology,ecommerce,economic,economy,edge,edit,edition,editor,editorial,education,effect,effective,efficiency,efficient,effort,eight,either,elder,elect,election,electoral,electric,electricity,electron,electronic,elegant,element,elementary,elephant,elevation,eleven,eligibility,eligible,eliminate,elimination,elite,else,elsewhere,email,embassy,emerald,emergency,emission,emotional,emperor,empire,empirical,employ,employee,employer,employment,empty,enable,enclosure,encounter,encourage,encryption,encyclopedia,endorsement,enemy,energy,enforcement,engage,engagement,engine,engineer,engineering,enhance,enhancement,enjoy,enlarge,enlargement,enough,enquiry,enrollment,ensemble,ensure,enter,enterprise,entertainment,entire,entity,entrance,entrepreneur,entry,envelope,environment,enzyme,epic,episode,equal,equality,equation,equilibrium,equinox,equipment,equity,equivalent,error,escape,escort,especially,essay,essence,essential,establish,establishment,estate,estimate,estimation,eternal,ethernet,ethical,ethnic,europe,european,evaluate,evaluation,evanescence,even,event,eventually,ever,every,everybody,everyday,everyone,everywhere,evidence,evident,evil,evolution,exact,exactly,exam,examination,examine,example,excel,excellence,excellent,except,exception,excerpt,excessive,exchange,excitement,exclude,exclusion,exclusive,excuse,execute,execution,executive,exempt,exemption,exercise,exhaust,exhibit,exhibition,exist,existence,exit,exotic,expand,expansion,expect,expenditure,expense,expensive,experience,experiment,expert,expertise,expiration,explain,explanation,explicit,exploration,explore,explorer,explosion,exposition,export,exposure,expression,extend,extension,extensive,extent,exterior,external,extra,extract,extraction,extraordinary,extreme,fabric,face,facilitate,facility,fact,factor,factory,faculty,fail,failure,fair,fairy,faith,fake,fall,fallen,false,fame,familiar,family,fancy,fantastic,fantasy,fare,farm,farmer,fashion,fast,fatal,fate,father,fault,favor,favorite,fear,feat,feature,february,federal,federation,feedback,feel,feet,fell,fellow,fellowship,felt,female,fence,ferry,festival,fever,fewer,fiber,fiction,field,fifteen,fifth,fifty,fight,fighter,figure,file,filename,fill,film,filter,final,finally,finance,financial,find,finder,fine,finest,finish,finite,fire,fireplace,firewall,firm,firmware,first,fiscal,fish,fisher,fist,five,flag,flame,flash,flat,flavor,fleece,fleet,flesh,flex,flexibility,flexible,flight,flip,float,flood,floor,floppy,floral,florist,flour,flow,flower,fluid,flush,flux,flyer,foam,focal,fold,folder,folk,follow,font,food,fool,foot,footage,football,footwear,forbidden,force,forecast,foreign,forest,forestry,forever,forge,forget,forgot,forgotten,fork,form,formal,format,formation,former,formula,fort,forth,fortune,forty,forum,forward,fossil,foster,fought,foul,found,foundation,founder,fountain,four,fourth,fraction,fragrance,frame,framework,france,franchise,frank,fraud,free,freedom,freelance,freeware,freeze,freight,frequency,frequent,fresh,friday,fridge,friend,friendship,frog,from,front,frontier,frontpage,frost,frozen,fruit,fuel,full,function,functionality,fund,fundamental,funeral,funk,funky,funny,furniture,further,furthermore,fusion,future,fuzzy,gain,galaxy,gale,gallery,game,gamma,gang,garage,garbage,garden,garlic,gasoline,gate,gateway,gather,gauge,gave,gazette,gear,geek,gender,gene,genealogy,general,generate,generation,generator,generic,genetic,genome,genre,gentle,gentleman,gently,genuine,geographic,geography,geology,geometrical,geometry,germany,ghost,giant,gift,girl,girlfriend,give,given,glad,glance,glen,global,globe,glory,glossary,glow,glucose,gnome,goal,goat,gold,golden,golf,gone,good,gore,gospel,gossip,gothic,gotten,gourmet,governance,government,governor,grab,grace,grad,grade,gradual,graduate,graduation,grain,grammar,grand,grant,graph,graphic,graphical,grateful,gratuity,grave,gravity,gray,great,greece,green,greenhouse,grew,grid,griffin,grill,grip,grocery,groove,ground,groundwater,group,grove,grow,grown,growth,guarantee,guard,guardian,guest,guestbook,guidance,guide,guild,guilty,guitar,gulf,guru,habitat,hack,hacker,hair,hairy,half,hall,halloween,halo,hammer,hand,handbook,handheld,handle,handmade,handy,hang,happen,happy,harassment,harbor,hard,hardcover,hardly,hardware,hardwood,harm,harmful,harmony,harvest,hash,hate,have,haven,hawaii,hawk,hazard,head,header,headline,headset,health,healthcare,healthy,hear,heard,heart,heat,heater,heaven,heavy,heel,height,held,helicopter,hello,helmet,help,helpful,hence,herald,herb,here,hereby,herein,heritage,hero,herself,hidden,hide,hierarchy,high,highland,highlight,highway,hill,himself,hint,hire,historic,history,hobby,hockey,hold,holder,hole,holiday,hollow,holly,hollywood,holy,home,homeland,homepage,hometown,homework,honest,honey,honor,hood,hook,hope,hopeful,horizon,horizontal,hormone,horn,horrible,horror,horse,hose,hospital,hospitality,host,hostel,hotel,hottest,hour,house,household,however,huge,hugh,hull,human,humanitarian,humanity,humidity,humor,hung,hungary,hunger,hungry,hunt,hunter,hurricane,hurt,husband,hybrid,hydraulic,hydrogen,hygiene,hypothetical,iceland,icon,idea,ideal,identical,identification,identifier,identify,identity,idle,idol,ignore,illegal,illustration,image,imagination,imagine,immediate,immigration,immune,immunology,impact,imperial,implement,implementation,import,importance,important,impose,impossible,impression,impressive,improve,improvement,inbox,incentive,inch,incidence,incident,include,inclusion,inclusive,income,incomplete,incorporate,incorrect,increase,incredible,independence,independent,index,india,indicate,indication,indicator,indie,indirect,individual,indonesia,indoor,induction,industrial,industry,inexpensive,infant,infection,infinite,inflation,influence,inform,informal,information,informative,infrastructure,initial,initiative,injection,injury,inkjet,inline,inner,innocent,innovation,innovative,input,inquire,inquiry,insert,insertion,inside,insider,insight,inspection,inspector,inspiration,install,installation,instance,instant,instead,institute,institution,instruction,instructor,instrument,instrumentation,insulin,insurance,intake,integer,integral,integrate,integration,integrity,intel,intellectual,intelligence,intelligent,intend,intense,intensity,intensive,intent,intention,inter,interact,interaction,interactive,interest,interface,interference,interim,interior,intermediate,internal,international,internet,internship,interpretation,intersection,interstate,interval,intervention,interview,into,intranet,introduce,introduction,introductory,invalid,invariant,invasion,invention,inventory,invest,investigate,investigation,investigator,investment,investor,invisible,invitation,invite,invoice,involve,involvement,iron,irrigation,island,isle,isolation,issue,italic,italy,item,itself,ivory,jack,jacket,jade,jaguar,jail,january,japan,java,javascript,jazz,jeans,jersey,jewel,jewelry,join,joint,joke,journal,journalism,journalist,journey,judge,judgment,judicial,juice,july,jump,junction,june,jungle,junior,junk,jurisdiction,jury,just,justice,justify,juvenile,karaoke,karma,keen,keep,kept,kernel,keyboard,keyword,kick,kidney,kind,kitchen,knee,knew,knife,knight,knit,knock,know,knowledge,known,label,labor,laboratory,lace,lack,ladder,laden,lady,laid,lake,lamb,lambda,lamp,lance,land,landscape,lane,language,laptop,large,laser,last,late,latex,latin,latitude,latter,laugh,launch,laundry,lawn,lawsuit,lawyer,layer,layout,lazy,lead,leader,leadership,leaf,league,lean,learn,lease,least,leather,leave,lecture,left,legacy,legal,legend,legendary,legislation,legislative,legislature,legitimate,leisure,lemon,lender,length,lesser,lesson,letter,level,liability,liable,liberal,liberty,librarian,library,license,life,lifestyle,lifetime,lift,light,lighter,lightweight,like,likelihood,likely,likewise,lime,limit,limitation,line,linear,link,linux,lion,liquid,list,listen,literacy,literal,literary,literature,litigation,little,live,liver,livestock,load,loan,lobby,local,locale,locate,location,locator,lock,lodge,logic,login,logo,lone,long,longitude,look,lookup,loop,loose,lord,lose,lost,lottery,loud,lounge,love,luck,lucky,luggage,lunch,lung,luxury,lyric,machine,machinery,macro,made,magazine,magic,magnet,magnetic,magnificent,magnitude,maiden,mail,mailman,main,mainland,mainstream,maintain,maintenance,major,majority,make,maker,makeup,male,mali,malpractice,manage,management,manager,mandate,mandatory,manga,manner,manor,manual,manufacture,manufacturer,many,maple,marathon,marble,march,margin,marina,marine,maritime,mark,marker,market,marketplace,marriage,mart,martial,marvel,maryland,mask,mason,massage,massive,master,match,material,maternity,math,mathematical,mathematics,matrix,matter,mature,maximize,maximum,maybe,mayor,meal,mean,meant,meanwhile,measure,measurement,meat,mechanical,mechanism,medal,media,median,medical,medication,medicine,medieval,meditation,mediterranean,medium,meet,meetup,member,membership,membrane,memo,memorabilia,memorial,memory,mental,mention,mentor,menu,merchandise,merchant,mercury,mercy,mere,merge,merger,merit,merry,mesh,message,messenger,meta,metabolism,metadata,metal,metallic,meter,method,methodology,metric,metro,metropolitan,mexico,mice,microphone,microwave,middle,midnight,midwest,might,mighty,migration,mild,mile,mileage,military,milk,mill,millennium,miller,million,mime,mind,mine,mineral,miniature,minimal,minimize,minimum,minister,ministry,minor,minority,mint,minute,miracle,mirror,missile,mission,mistake,mixer,mixture,mobile,mobility,mode,model,modem,moderate,moderator,modern,modification,modify,modular,module,moisture,mold,molecular,moment,momentum,monday,monetary,money,monitor,monkey,monster,month,mood,moon,moral,more,moreover,mortality,mortgage,most,motel,mother,motherboard,motion,motivation,motor,motorcycle,mount,mountain,mouse,mouth,move,movement,movie,much,multimedia,multiple,municipal,municipality,muscle,museum,music,musical,musician,must,mutual,muze,myself,mystery,myth,nail,name,namespace,narrative,narrow,nasty,nation,national,nationwide,native,natural,nature,naval,navigate,navigation,navigator,navy,near,nearby,necessary,necessity,neck,necklace,needle,negative,negotiation,neighbor,neighborhood,neither,neon,nerve,nest,network,neural,neutral,never,newbie,newsletter,newspaper,next,nice,nick,nickel,nickname,night,nightlife,nightmare,nine,nitrogen,noble,nobody,node,noise,nomination,none,nonprofit,noon,norm,normal,north,northeast,northern,northwest,nose,note,notebook,notice,notification,notify,notion,novel,novelty,november,nowhere,nuclear,nuke,null,number,numeric,nurse,nursery,nutrition,nylon,obesity,object,objective,obligation,observation,observe,observer,obtain,obvious,occasion,occupation,occur,occurrence,ocean,october,offense,offensive,offer,office,officer,official,offline,offset,offshore,often,okay,olive,olympic,once,onion,online,only,onto,open,opera,operate,operation,operator,opinion,opponent,opportunity,opposite,opposition,optical,optimal,optimization,optimize,optimum,option,optional,oracle,orange,orbit,orchestra,order,ordinance,ordinary,organ,organic,organization,organize,organizer,orientation,origin,original,other,otherwise,ought,outcome,outdoor,outer,outlet,outline,outlook,output,outreach,outside,oval,oven,over,overall,overcome,overhead,overnight,overview,owner,ownership,oxide,oxygen,ozone,pace,pacific,pack,package,packet,page,paid,pain,painful,paint,paintball,pair,palace,pale,palm,panel,panic,paper,paperback,parade,paradise,paragraph,parallel,parameter,parcel,parent,parish,park,parker,parliament,parliamentary,part,partial,participant,participate,participation,particle,particular,partition,partner,partnership,party,passage,passenger,passion,passive,passport,password,past,pasta,paste,pastor,patch,patent,path,pathology,patient,patio,patrol,pattern,pavilion,payable,payday,payment,payroll,peace,peaceful,peak,pearl,pediatric,peer,penalty,pencil,pendant,penguin,peninsula,penny,pension,people,pepper,percent,percentage,perception,perfect,perform,performance,performer,perfume,period,periodic,peripheral,permalink,permanent,permission,permit,permutation,persistent,person,personal,personality,personnel,perspective,pest,petite,petition,petroleum,phantom,pharmaceutical,pharmacology,pharmacy,phase,phenomenon,philosophy,phoenix,phone,photo,photograph,photographer,photography,photoshop,phrase,physical,physician,physiology,piano,pick,pickup,picnic,picture,piece,pierce,pike,pill,pillow,pilot,pine,pink,pioneer,pipe,pipeline,pitch,pixel,pizza,place,placement,plain,plaintiff,plan,plane,planet,planner,plant,plasma,plastic,plate,platform,platinum,play,playback,player,playlist,plaza,pleasant,please,pleasure,pledge,plenty,plot,plug,plugin,pocket,podcast,poem,poet,poetry,point,pointer,poker,polar,pole,police,policy,polish,political,poll,pollution,polyester,polymer,polyphonic,pond,pool,poor,pope,popular,popularity,population,porcelain,pork,port,portable,portal,porter,portfolio,portion,portrait,pose,position,positive,possession,possibility,possible,post,postage,postal,postcard,poster,potato,potential,potter,pottery,poultry,pound,pour,poverty,powder,power,powerful,practical,practice,practitioner,prairie,praise,pray,prayer,precipitation,precise,precision,predict,prediction,prefer,preference,prefix,pregnancy,pregnant,preliminary,premier,premium,prepaid,preparation,prepare,prerequisite,prescription,presence,present,presentation,preservation,preserve,president,presidential,pressure,pretty,prevent,prevention,preview,previous,price,pride,priest,primarily,primary,prime,prince,principal,principle,print,printable,printer,prior,priority,prison,prisoner,privacy,private,privilege,prix,prize,probability,probably,probe,problem,procedure,processor,procurement,produce,producer,product,production,productive,productivity,profession,professional,professor,profile,profit,program,programmer,progressive,project,projection,projector,prominent,promise,promote,promotion,prompt,proof,proper,property,prophet,proportion,proposal,propose,proposition,proprietary,prospect,prospective,protect,protection,protective,protein,protest,protocol,prototype,proud,prove,provide,providence,provider,province,provincial,provision,proxy,psychiatry,psychological,psychology,public,publication,publicity,publish,publisher,pull,pulse,pump,punch,punishment,punk,puppy,purchase,pure,purple,purpose,purse,pursuant,pursue,pursuit,push,puzzle,python,quad,qualification,qualify,quality,quantitative,quantity,quantum,quarter,queen,query,quest,question,questionnaire,queue,quick,quiet,quilt,quit,quite,quiz,quote,rabbit,race,rack,radar,radiation,radical,radio,rage,raid,rail,railroad,railway,rain,rainbow,raise,rally,ranch,random,range,rank,rapid,rare,rate,rather,ratio,rational,reach,reaction,read,reader,readily,ready,real,realistic,reality,realize,really,realm,realtor,realty,rear,reason,reasonable,reasonably,rebate,rebel,rebound,recall,receipt,receive,receiver,recent,reception,receptor,recipe,recipient,recognition,recognize,recommend,recommendation,reconstruction,record,recorder,recover,recovery,recreation,recreational,recruitment,redeem,reduce,reduction,reef,reel,refer,reference,referral,refinance,refine,reflect,reflection,reform,refresh,refrigerator,refund,refuse,regard,regime,region,regional,register,registrar,registration,registry,regression,regular,regulation,regulatory,rehab,rehabilitation,reject,relate,relation,relationship,relative,relax,relaxation,relay,release,relevance,relevant,reliability,reliable,reliance,relief,religion,reload,relocation,rely,remain,remainder,remark,remarkable,remedy,remember,remind,reminder,remix,remote,removable,removal,remove,renaissance,render,renew,renewable,renewal,rent,rental,repair,repeat,replace,replacement,replica,replication,reply,report,reporter,repository,represent,representation,representative,reprint,reproduce,reproduction,republic,reputation,request,require,requirement,rescue,research,researcher,reseller,reservation,reserve,reservoir,reset,residence,resident,residential,resist,resistance,resistant,resolution,resolve,resort,resource,respect,respective,respiratory,respond,respondent,response,responsibility,responsible,rest,restaurant,restoration,restore,restrict,restriction,result,resume,retail,retailer,retain,retention,retirement,retreat,retrieval,retrieve,retro,return,reunion,reveal,revelation,revenge,revenue,reverse,review,reviewer,revision,revolution,revolutionary,reward,rhythm,ribbon,rice,rich,ride,rider,ridge,right,ripe,rise,risk,river,riverside,road,robin,robot,robust,rock,rocket,rocky,role,roll,roller,roman,romance,roof,room,roommate,root,rope,rose,roster,rotary,rotation,rouge,rough,roulette,round,route,router,routine,rover,royal,royalty,rubber,ruby,rugby,rule,runner,runtime,rural,rush,sacrifice,safari,safe,safety,sage,said,sail,saint,sake,salad,salary,sale,salmon,salon,salt,salvation,same,sample,sand,sandwich,santa,sapphire,satellite,satin,satisfaction,satisfactory,satisfy,saturday,saturn,sauce,savage,savannah,save,saver,sbjct,scale,scan,scanner,scary,scenario,scene,scenic,schedule,scheme,scholar,scholarship,school,science,scientific,scientist,scoop,scope,score,scout,scratch,screen,screensaver,screenshot,screw,script,scroll,scuba,sculpture,seafood,seal,search,season,seasonal,seat,second,secondary,secret,secretariat,secretary,section,sector,secure,security,seek,seeker,seem,seen,segment,select,selection,selective,self,sell,seller,semester,semiconductor,seminar,senate,senator,send,sender,senior,sense,sensitive,sensitivity,sensor,sent,sentence,separate,separation,september,sequence,serial,serious,serum,serve,server,service,session,settle,settlement,setup,seven,several,severe,shade,shadow,shaft,shake,shall,shame,shape,share,shark,sharp,sheep,sheer,sheet,shelf,shell,shelter,shepherd,sheriff,shield,shift,shine,ship,shipment,shirt,shock,shoe,shoot,shop,shopper,shore,short,shot,should,shoulder,show,showcase,shower,shown,shut,shuttle,sick,side,sight,sigma,sign,signal,signature,significance,significant,silence,silent,silicon,silk,silly,silver,similar,simple,simulation,since,sink,sister,site,sitemap,situation,sixth,size,skill,skin,skip,skirt,sleep,sleeve,slide,slideshow,slight,slim,slip,slope,slot,slow,small,smart,smell,smile,smith,smoke,smooth,snake,snap,snapshot,snow,snowboard,soap,soccer,social,society,sociology,socket,sodium,sofa,soft,softball,software,soil,solar,sold,soldier,sole,solid,solo,solstice,solution,solve,some,somebody,somehow,someone,somewhat,somewhere,song,sonic,soon,sorry,sort,sought,soul,sound,soundtrack,soup,source,south,southeast,southern,southwest,space,spam,span,spare,spatial,speak,speaker,special,specialist,specialty,specific,specification,specify,speck,spectacular,spectrum,speech,spell,spend,spent,sphere,spice,spider,spill,spilt,spin,spine,spirit,spiritual,spirituality,split,spoke,spoken,spokesman,sponsor,sponsorship,sport,spot,spotlight,spouse,spray,spread,sprint,squad,square,squirt,stability,stable,stack,stadium,staff,stage,stamp,stand,standard,star,start,starter,startup,stat,state,statement,statewide,static,station,stationery,statistical,statistics,statute,statutory,stay,steady,steal,steam,steel,stem,step,stereo,stick,sticker,sticky,still,stock,stolen,stomach,stone,stood,stop,storage,store,storm,story,straight,strain,strand,strange,stranger,strap,strategic,strategy,stream,street,strength,strengthen,stretch,strict,strike,stroke,strong,struck,struct,structural,structure,struggle,stuck,student,studio,study,stuff,style,stylish,subcommittee,subdivision,subject,sublime,submission,submit,subscribe,subscriber,subscription,subsection,subsequent,subsidiary,substance,substantial,substitute,subtle,suburban,successful,such,sudden,suffer,sufficient,sugar,suggest,suggestion,suit,suitable,suite,summary,summer,summit,sunday,sunny,sunrise,sunset,sunshine,super,superb,superintendent,superior,supervision,supervisor,supplement,supplemental,supplier,supply,support,suppose,supreme,sure,surf,surface,surge,surgeon,surgery,surgical,surname,surprise,surround,surveillance,survey,survival,survive,survivor,suspect,suspension,sustainability,sustainable,swap,sweet,swift,swim,switch,sword,symbol,sympathy,symphony,symposium,sync,syndicate,syndication,syndrome,syntax,synthetic,system,systematic,table,tablet,tackle,tail,tailor,take,taken,tale,talent,talk,tall,tank,tape,target,tariff,task,taste,tattoo,taught,taxation,taxi,teach,teacher,team,tear,tech,technical,technician,technique,technological,technology,teddy,teen,teenage,teeth,telephone,telephony,telescope,television,tell,temp,temperature,template,temple,temporal,temporarily,temporary,tenant,tend,tender,tension,tensor,tent,term,terminal,termination,terminology,terrace,terrain,terrible,territory,terror,terry,test,testament,testimony,text,textbook,textile,texture,than,thank,that,theater,thee,theft,their,them,theme,then,theology,theorem,theoretical,theory,therapeutic,therapist,therapy,there,thereafter,thereby,therefore,thereof,thermal,these,they,thick,thin,think,third,thirty,thorough,those,though,thought,thousand,thread,threat,three,threesome,threshold,thriller,throat,through,throughout,throw,thrown,thru,thumb,thumbnail,thunder,thursday,ticket,tide,tier,tiger,tight,tile,till,timber,time,timeline,timer,tiny,tire,tissue,titanium,title,tobacco,today,toddler,together,toilet,token,told,tolerance,toll,tomato,tomorrow,tone,toner,tongue,tonight,took,tool,toolbar,toolbox,toolkit,tooth,topic,total,touch,tough,tour,tourism,tourist,tournament,toward,tower,town,township,toxic,trace,track,trackback,tracker,tract,tractor,trade,trademark,trader,tradition,traditional,traffic,tragedy,trail,trailer,train,trainer,trance,transaction,transcript,transcription,transfer,transform,transformation,transit,transition,translate,translation,translator,transmission,transmit,transparency,transparent,transport,transportation,trap,trash,trauma,travel,traveler,tray,treasure,treasurer,treasury,treat,treatment,treaty,tree,trek,trend,trial,triangle,tribal,tribe,tribunal,tribune,tribute,trick,trigger,trim,trinity,trio,trip,triple,triumph,trivia,tropical,trouble,trout,truck,true,truly,trunk,trust,trustee,truth,tsunami,tube,tuesday,tuition,tumor,tune,tuner,tunnel,turbo,turkey,turn,turner,turtle,tutorial,twelve,twenty,twice,twin,twist,type,typical,ugly,ultimate,ultra,unable,unavailable,uncertainty,uncle,under,undergraduate,underground,understand,understood,undertake,undo,unemployment,unfortunate,uniform,union,unique,unit,unity,universal,universe,university,unix,unknown,unlike,unlock,unnecessary,unsubscribe,until,unto,unusual,unwrap,update,upgrade,upload,upon,upper,upset,urban,urge,urgent,usage,useful,user,username,usual,usually,utility,utilization,utilize,vacation,vaccine,vacuum,valentine,valid,validation,validity,valley,valuable,valuation,value,valve,vampire,vanilla,variable,variance,variation,variety,vary,vast,vault,vector,vegetable,vegetarian,vegetation,vehicle,velocity,velvet,vendor,venture,venue,verbal,verification,verify,verse,version,vertex,vertical,very,vessel,veteran,veterinary,vice,victim,victor,victorian,victory,video,view,viewer,villa,village,vintage,vinyl,violation,violence,violent,violin,viral,virtual,virtue,visa,visibility,visible,vision,visit,visitor,vista,visual,vital,vitamin,vocabulary,vocal,vocational,voice,void,volleyball,volt,voltage,volume,voluntary,volunteer,vote,vulnerability,vulnerable,wage,wagon,wait,waiver,wake,walk,walker,wall,wallet,wallpaper,walnut,want,ward,warehouse,warm,warn,warrant,warranty,warren,warrior,wash,washer,waste,watch,water,waterproof,watt,wave,weak,wealth,weapon,wear,weather,webmaster,webpage,website,wednesday,week,weekend,weight,weird,welcome,welfare,well,went,were,west,western,whale,what,whatever,wheat,wheel,when,whenever,where,wherever,whether,which,while,white,whole,whom,whose,wide,widescreen,widespread,width,wife,wifi,wiki,wild,wildlife,wiley,will,willow,wind,window,wine,winner,winter,wire,wisdom,wise,wish,wishlist,witch,with,withdrawal,within,without,wizard,wolf,woman,women,wonder,wonderful,wood,wooden,wool,word,work,worker,workflow,workforce,workout,workplace,workshop,workstation,world,worldwide,worm,worn,worry,worse,worship,worst,worth,worthy,would,wound,wrap,wrist,write,writer,written,wrong,wrote,xenomorph,xenon,xylophone,yacht,yahoo,yang,yard,yarn,yeah,year,yearly,yeast,yellow,yesterday,yield,yoga,young,your,yourself,youth,zero,zinc,zone,zoom".split(",");
+</script>
+</head>
+<body onload="loader()" oncontextmenu="return false" ondragstart="return false" onselectstart="return false">
+<img src="data:image/svg+xml;base64, PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIiA/Pgo8IURPQ1RZUEUgc3ZnIFBVQkxJQyAiLS8vVzNDLy9EVEQgU1ZHIDEuMS8vRU4iICJodHRwOi8vd3d3LnczLm9yZy9HcmFwaGljcy9TVkcvMS4xL0RURC9zdmcxMS5kdGQiPgo8c3ZnIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZlcnNpb249IjEuMSIgd2lkdGg9IjI5IiBoZWlnaHQ9IjIxIiB2aWV3Qm94PSIwIDAgMjkgMjEiIHhtbDpzcGFjZT0icHJlc2VydmUiPgo8ZyB0cmFuc2Zvcm09Im1hdHJpeCgxIDAgMCAxIDE0LjUgMTAuNSkiIGlkPSJMYXllcl8xIiAgPgo8cGF0aCBzdHlsZT0ic3Ryb2tlOiBub25lOyBzdHJva2Utd2lkdGg6IDE7IHN0cm9rZS1kYXNoYXJyYXk6IG5vbmU7IHN0cm9rZS1saW5lY2FwOiBidXR0OyBzdHJva2UtZGFzaG9mZnNldDogMDsgc3Ryb2tlLWxpbmVqb2luOiBtaXRlcjsgc3Ryb2tlLW1pdGVybGltaXQ6IDQ7IGZpbGw6IHJnYigxMDUsMTA1LDEwNSk7IGZpbGwtcnVsZTogbm9uemVybzsgb3BhY2l0eTogMTsiICB0cmFuc2Zvcm09IiB0cmFuc2xhdGUoLTE2LCAtMTYpIiBkPSJNIDQgMTAgaCAyNCBjIDEuMTA0IDAgMiAtMC44OTYgMiAtMiBzIC0wLjg5NiAtMiAtMiAtMiBIIDQgQyAyLjg5NiA2IDIgNi44OTYgMiA4IFMgMi44OTYgMTAgNCAxMCB6IE0gMjggMTQgSCA0IGMgLTEuMTA0IDAgLTIgMC44OTYgLTIgMiBzIDAuODk2IDIgMiAyIGggMjQgYyAxLjEwNCAwIDIgLTAuODk2IDIgLTIgUyAyOS4xMDQgMTQgMjggMTQgeiBNIDI4IDIyIEggNCBjIC0xLjEwNCAwIC0yIDAuODk2IC0yIDIgcyAwLjg5NiAyIDIgMiBoIDI0IGMgMS4xMDQgMCAyIC0wLjg5NiAyIC0yIFMgMjkuMTA0IDIyIDI4IDIyIHoiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgLz4KPC9nPgo8L3N2Zz4K" id="menuIcon" onclick="s_h('options')" title="Options" />
+<h1 class="center" onclick="resetOptions();location.reload()" title="Click to reset game">Javascript Word Search</h1>
+<div id="options" class="sidebar">
+<form id="optContainer">
+<input type="radio" id="small" name="fieldSize" onclick="selectSize(0)" /><label for="small">Small</label><br />
+<input type="radio" id="medium" name="fieldSize" checked="true" onclick="selectSize(1)" /><label for="medium">Medium</label><br />
+<input type="radio" id="large" name="fieldSize" onclick="selectSize(2)" /><label for="large">Large</label><br />
+<input type="radio" id="wide" name="fieldSize" onclick="selectSize(3)" /><label for="wide">Wide</label><br />
+<input type="radio" id="custom" name="fieldSize" /><label for="custom">Custom: </label><br />
+<span class="indent2">Height: </span><input type="text" id="heightBox" class="inputBox" value="15" onchange="get('custom').checked='true'" /><br />
+<span class="indent2">Width: </span><input type="text" id="widthBox" class="inputBox" value="15" onchange="get('custom').checked='true'" /><br /><br />
+<span class="indent1">Number of words: </span><input type="text" id="numBox" class="inputBox" value="20" /><br /><br />
+<span class="indent1">Minimum word length: </span><input type="text" id="minL" class="inputBox" value="5" /><br />
+<span class="indent1">Maximum word length: </span><input type="text" id="maxL" class="inputBox" value="9" /><br /><br />
+<input type="checkbox" id="doBackwards" checked="true" /><label for="doBackwards">Allow words to go backwards</label><br /><br />
+<textarea id="customWords" placeholder="Place your own words here (comma- or newline-separated)" rows="7" cols="29"></textarea><br />
+<a href="https://relatedwords.io/" id="relatedWordsLink" target="_blank" onclick="getRelatedWords()">Find related words</a>
+<br /><br /><br />
+<input type="button" value="Generate puzzle" onclick="drawNew()" />
+</form>
+</div>
+<div id="wordList" class="sidebar"></div>
+<span>Time: <span id="clock">000</span>
+<input type="button" id="timerCtrl" value="Pause" onclick="ctrlTimer(); s_h('fieldContainer')" /></span>
+<span>Words left: <span id="wordCount">20</span></span><br /><br />
+<div id="fieldContainer">
+<div id="puzzle" class="center"></div>
+<canvas id="cvs" class="center"></canvas>
+</div>
+</body>
+</html>
